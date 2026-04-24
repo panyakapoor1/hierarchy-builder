@@ -1,0 +1,124 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Bajaj | Hierarchy Builder</title>
+    <style>
+        * { box-sizing: border-box; }
+        body { font-family: sans-serif; background: #f4f4f4; padding: 20px; color: #333; }
+        .box { background: #fff; padding: 20px; border-radius: 5px; box-shadow: 0 2px 5px rgba(0,0,0,0.1); max-width: 800px; margin: 0 auto 20px; }
+        h1 { margin-bottom: 20px; text-align: center; }
+        textarea { width: 100%; height: 100px; padding: 10px; margin-bottom: 10px; border: 1px solid #ccc; border-radius: 4px; font-family: inherit; }
+        #btn { width: 100%; padding: 12px; background: #007bff; color: #fff; border: none; border-radius: 4px; cursor: pointer; font-weight: bold; }
+        #btn:disabled { background: #ccc; }
+        .info { display: flex; justify-content: space-between; font-size: 14px; margin-bottom: 20px; border-bottom: 1px solid #ddd; padding-bottom: 10px; }
+        .item { border: 1px solid #ddd; padding: 15px; margin-bottom: 10px; border-radius: 4px; }
+        .top { display: flex; justify-content: space-between; margin-bottom: 10px; font-weight: bold; }
+        .tree ul { list-style: none; padding-left: 20px; border-left: 1px solid #eee; }
+        .tree li { margin: 5px 0; }
+        .tag-label { font-weight: bold; margin-top: 15px; margin-bottom: 8px; font-size: 14px; color: #555; border-top: 1px solid #f0f0f0; padding-top: 10px; }
+        .tag { display: inline-block; background: #eee; padding: 3px 8px; margin: 3px; border-radius: 3px; font-size: 12px; }
+        .err { color: red; text-align: center; margin-top: 10px; font-size: 14px; }
+        .stats { background: #2d3e50; color: #fff; padding: 15px; border-radius: 5px; display: flex; justify-content: space-around; font-size: 14px; margin-top: 20px; }
+    </style>
+</head>
+<body>
+
+<div class="box">
+    <h1>Hierarchy Builder</h1>
+    <textarea id="input" placeholder="A->B, A->C..."></textarea>
+    <button id="btn">Submit</button>
+    <div id="err" class="err" style="display:none">Connection failed!</div>
+</div>
+
+<div id="res" style="display:none" class="box">
+    <div class="info" id="u-info"></div>
+    <div id="list"></div>
+    <div id="tags"></div>
+    <div class="stats" id="summ"></div>
+</div>
+
+<script>
+    const btn = document.getElementById('btn');
+    const input = document.getElementById('input');
+    const resBox = document.getElementById('res');
+
+    btn.onclick = async () => {
+        let txt = input.value.trim();
+        if (!txt) return;
+
+        let arr = txt.split(/[\n,]+/).map(s => s.trim()).filter(s => s.length > 0);
+        btn.disabled = true;
+        btn.innerText = 'Loading...';
+        document.getElementById('err').style.display = 'none';
+
+        try {
+            let r = await fetch("/bfhl", {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ data: arr })
+            });
+            let out = await r.json();
+            render(out);
+        } catch (e) {
+            document.getElementById('err').style.display = 'block';
+        } finally {
+            btn.disabled = false;
+            btn.innerText = 'Submit';
+        }
+    };
+
+    function render(data) {
+        resBox.style.display = 'block';
+        document.getElementById('u-info').innerHTML = `
+            <span><b>User:</b> ${data.user_id}</span>
+            <span><b>Email:</b> ${data.email_id}</span>
+            <span><b>Roll:</b> ${data.college_roll_number}</span>
+        `;
+
+        let list = document.getElementById('list');
+        list.innerHTML = '';
+        data.hierarchies.forEach(h => {
+            let d = document.createElement('div');
+            d.className = 'item';
+            d.innerHTML = `
+                <div class="top">
+                    <span>Root: ${h.root}</span>
+                    <span>${h.has_cycle ? 'Cycle' : 'Depth: ' + h.depth}</span>
+                </div>
+                <div class="tree">${h.has_cycle ? 'N/A' : draw(h.tree)}</div>
+            `;
+            list.appendChild(d);
+        });
+
+        let t = '';
+        if (data.invalid_entries.length) {
+            t += `<div class="tag-label">Invalid:</div>`;
+            data.invalid_entries.forEach(e => t += `<span class="tag">${e}</span>`);
+        }
+        if (data.duplicate_edges.length) {
+            t += `<div class="tag-label">Duplicates:</div>`;
+            data.duplicate_edges.forEach(e => t += `<span class="tag">${e}</span>`);
+        }
+        document.getElementById('tags').innerHTML = t;
+
+        document.getElementById('summ').innerHTML = `
+            <span>Trees: ${data.summary.total_trees}</span>
+            <span>Cycles: ${data.summary.total_cycles}</span>
+            <span>Largest: ${data.summary.largest_tree_root || 'None'}</span>
+        `;
+    }
+
+    function draw(obj) {
+        let h = '<ul>';
+        for (let k in obj) {
+            h += `<li><b>${k}</b>`;
+            if (Object.keys(obj[k]).length > 0) h += draw(obj[k]);
+            h += '</li>';
+        }
+        return h + '</ul>';
+    }
+</script>
+</body>
+</html>
